@@ -112,6 +112,8 @@ export class StudioBridge {
       this.handlePoll(req, res);
     } else if (req.method === "POST" && url.startsWith("/response")) {
       this.handleResponse(req, res);
+    } else if (req.method === "POST" && url.startsWith("/invoke")) {
+      this.handleInvoke(req, res);
     } else if (req.method === "GET" && url.startsWith("/health")) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, connected: this.connected }));
@@ -119,6 +121,28 @@ export class StudioBridge {
       res.writeHead(404);
       res.end();
     }
+  }
+
+  /**
+   * POST /invoke — lets another bridge instance (one that couldn't bind the port)
+   * run a tool through this owner. Body: {tool, args, timeoutMs}.
+   */
+  private handleInvoke(req: http.IncomingMessage, res: http.ServerResponse): void {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const { tool, args, timeoutMs } = JSON.parse(body) as {
+          tool: string;
+          args: unknown;
+          timeoutMs?: number;
+        };
+        const response = await this.call(tool, args, timeoutMs);
+        this.sendJson(res, 200, { success: true, response });
+      } catch (err) {
+        this.sendJson(res, 200, { success: false, error: (err as Error).message });
+      }
+    });
   }
 
   /** GET /request — plugin long-poll. */

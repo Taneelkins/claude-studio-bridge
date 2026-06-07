@@ -139,8 +139,11 @@ Anything not covered? `run_code` is the escape hatch — Claude can do it in raw
   when prompted (Plugin management dialog), then retry.
 - **Node path changed (nvm upgrade)** — update the `command` path in `~/.claude.json`
   and `.mcp.json` to the new `which node`.
-- **Port 44755 in use** — another bridge instance (e.g. a second Claude Code session)
-  owns it. Close the other session, or set `STUDIO_BRIDGE_PORT` on both ends.
+- **Multiple Claude Code chats** — supported. The first instance to start binds the
+  port and talks to Studio; every other instance auto-detects this and forwards its
+  tool calls through the owner. So any open chat can drive Studio. Caveat: if you
+  close the chat that owns the port, the others lose the link — reopen/restart Claude
+  Code to re-elect an owner. (Override the port on all ends with `STUDIO_BRIDGE_PORT`.)
 
 ## Security
 
