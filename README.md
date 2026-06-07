@@ -78,6 +78,14 @@ The installer steps below have already run; they're here for reference / other m
    `mcpServers.roblox-studio` (absolute paths to node + `bridge/dist/index.js`).
    A portable copy lives in [`.mcp.json`](.mcp.json) — drop it into any project
    folder you open Claude Code in to enable the tools there.
+4. **Install the always-on daemon** (recommended) — a tiny background service that
+   permanently owns the bridge port, so the Studio connection stays up no matter how
+   many Claude Code chats you open or close. Auto-starts at login, auto-restarts on crash:
+   ```bash
+   ./scripts/install-daemon.sh      # remove later with ./scripts/uninstall-daemon.sh
+   ```
+   Without it, chats elect one of themselves as the owner, and closing *that* chat drops
+   the link until another is elected. With it, that never happens.
 
 ## Using it
 
@@ -139,11 +147,14 @@ Anything not covered? `run_code` is the escape hatch — Claude can do it in raw
   when prompted (Plugin management dialog), then retry.
 - **Node path changed (nvm upgrade)** — update the `command` path in `~/.claude.json`
   and `.mcp.json` to the new `which node`.
-- **Multiple Claude Code chats** — supported. The first instance to start binds the
-  port and talks to Studio; every other instance auto-detects this and forwards its
-  tool calls through the owner. So any open chat can drive Studio. Caveat: if you
-  close the chat that owns the port, the others lose the link — reopen/restart Claude
-  Code to re-elect an owner. (Override the port on all ends with `STUDIO_BRIDGE_PORT`.)
+- **Multiple Claude Code chats** — supported. With the **daemon** installed (recommended;
+  `./scripts/install-daemon.sh`), it permanently owns the port and every chat forwards to
+  it, so you can open/close chats freely without dropping the connection. Without the
+  daemon, chats elect an owner among themselves and closing *that* chat drops the link
+  until another is elected. (Override the port on all ends with `STUDIO_BRIDGE_PORT`.)
+- **Connection keeps dropping when chats close** — install the daemon (above); that's
+  exactly what it fixes. Check it's alive: `curl -s localhost:44755/health` and
+  `tail ~/Documents/claude-studio-bridge/bridge/daemon.log`.
 
 ## Security
 
