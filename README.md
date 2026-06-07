@@ -38,8 +38,28 @@ up, runs it against the DataModel, and posts the result back → Claude sees it.
 | `set_properties` | Set properties / rename / reparent |
 | `run_code` | Execute arbitrary Luau in edit mode, capture output |
 | `get_console_output` | Return recent output/warnings/errors |
+| `run_in_play_mode` | Start a real playtest, run test Luau in it, capture output/errors, auto-stop |
+| `play_control` | Manually start/stop a playtest (`start_play` / `run_server` / `stop`) |
 
 Every mutating call is wrapped in a single **undo step** (Ctrl/Cmd-Z reverts it).
+
+### Self-verification (play mode)
+
+`run_in_play_mode` is what lets Claude check its own work at runtime without you
+present. It starts a real playtest, injects a server-side test script that runs your
+Luau, captures every print/warning/error (and any return value), then automatically
+ends the test and returns structured JSON:
+
+```jsonc
+{ "success": true, "ranWithoutError": true, "logs": [...], "errors": [],
+  "errorCount": 0, "durationSeconds": 0.4, "timedOut": false, "returned": "42" }
+```
+
+So Claude can, e.g., write a module, then run
+`require(game.ServerScriptService.MyModule).doThing()` in an actual running game and
+read back whether it worked. `mode` is `start_play` (Play Solo, has a Player) or
+`run_server` (Run, server only). It works because `StudioTestService:ExecutePlayModeAsync`
+yields until the in-game `EndTest` fires — that's the channel results cross back on.
 
 ## Setup (already done on this machine)
 

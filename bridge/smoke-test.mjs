@@ -11,6 +11,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const child = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "inherit"] });
 
+// --- MCP stdio client (newline-delimited JSON-RPC) ---
 let buf = "";
 const pending = new Map();
 let nextId = 1;
@@ -33,7 +34,6 @@ child.stdout.on("data", (chunk) => {
     }
   }
 });
-
 const rpc = (method, params) =>
   new Promise((resolve) => {
     const id = nextId++;
@@ -43,22 +43,34 @@ const rpc = (method, params) =>
 const notify = (method, params) =>
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
 
-// Pretend to be the plugin: pull one command, post back a canned response.
-async function actAsPluginOnce(makeResponse) {
-  for (let i = 0; i < 80; i++) {
-    const res = await fetch(BASE + "/request", { method: "GET" });
+// --- Simulated Studio plugin: a continuous long-poll loop, like the real one ---
+const responders = {}; // toolName -> (innerArgs) => { ok, text }
+const received = [];
+let pluginRunning = true;
+async function pluginLoop() {
+  while (pluginRunning) {
+    let res;
+    try {
+      res = await fetch(BASE + "/request", { method: "GET" });
+    } catch {
+      await sleep(100);
+      continue;
+    }
     if (res.status === 200) {
       const cmd = await res.json();
+      received.push(cmd);
+      const tool = Object.keys(cmd.args)[0];
+      const inner = cmd.args[tool];
+      const r = responders[tool] ? responders[tool](inner) : { ok: false, text: `no responder for ${tool}` };
       await fetch(BASE + "/response", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: cmd.id, success: true, response: makeResponse(cmd) }),
+        body: JSON.stringify({ id: cmd.id, success: r.ok, response: r.text }),
       });
-      return cmd;
+    } else if (res.status !== 423) {
+      await sleep(100);
     }
-    if (res.status !== 423) await sleep(100);
   }
-  throw new Error("plugin sim: no command arrived");
 }
 
 let failures = 0;
@@ -80,54 +92,55 @@ async function main() {
 
   const tools = await rpc("tools/list", {});
   const names = (tools.result?.tools ?? []).map((t) => t.name);
-  check(`tools/list returns 10 tools (${names.length})`, names.length === 10);
-  check("includes run_code", names.includes("run_code"));
-  check("includes set_script_source", names.includes("set_script_source"));
+  check(`tools/list returns 12 tools (${names.length})`, names.length === 12);
+  for (const n of ["run_code", "set_script_source", "run_in_play_mode", "play_control"]) {
+    check(`includes ${n}`, names.includes(n));
+  }
+
+  // Set up plugin responders, then start the continuous poll loop and let it
+  // establish a connection before issuing tool calls (fail-fast needs a poll).
+  responders.get_tree = (args) => ({
+    ok: true,
+    text: JSON.stringify({ echoedArgs: args, tree: { name: "Game", className: "DataModel" } }),
+  });
+  responders.run_in_play_mode = () => ({
+    ok: true,
+    text: JSON.stringify({
+      mode: "start_play",
+      result: { success: true, logs: [{ level: "output", message: "hi from play" }], errorCount: 0, durationSeconds: 0.2 },
+    }),
+  });
+  responders.delete_instance = () => ({ ok: false, text: "Refusing to destroy the DataModel" });
+  pluginLoop();
+  await sleep(300);
 
   const health = await (await fetch(BASE + "/health")).json();
-  check("health endpoint ok", health.ok === true);
+  check("health shows connected", health.ok === true && health.connected === true);
 
-  // Full round-trip through a tool call.
-  const callPromise = rpc("tools/call", {
-    name: "get_tree",
-    arguments: { path: "game", depth: 1 },
+  const tree = await rpc("tools/call", { name: "get_tree", arguments: { path: "game", depth: 1 } });
+  const treeText = tree.result?.content?.[0]?.text ?? "";
+  check("get_tree round-trips", treeText.includes("DataModel") && treeText.includes("game"));
+  check("plugin received {get_tree:{...}}", received.some((c) => c.args.get_tree?.path === "game"));
+
+  const play = await rpc("tools/call", {
+    name: "run_in_play_mode",
+    arguments: { code: "print('hi from play')", timeout: 5 },
   });
-  const cmd = await actAsPluginOnce((c) =>
-    JSON.stringify({ echoedArgs: c.args, tree: { name: "Game", className: "DataModel" } }),
-  );
-  check("plugin received {get_tree:{...}}", !!cmd.args.get_tree && cmd.args.get_tree.path === "game");
+  const playText = play.result?.content?.[0]?.text ?? "";
+  check("run_in_play_mode round-trips", playText.includes("hi from play") && playText.includes("success"));
 
-  const result = await callPromise;
-  const text = result.result?.content?.[0]?.text ?? "";
-  check("tool result flows back to Claude", text.includes("DataModel") && text.includes("get_tree"));
-
-  // Error propagation: plugin reports failure.
-  const errPromise = rpc("tools/call", { name: "delete_instance", arguments: { path: "game" } });
-  await (async () => {
-    for (let i = 0; i < 80; i++) {
-      const res = await fetch(BASE + "/request", { method: "GET" });
-      if (res.status === 200) {
-        const c = await res.json();
-        await fetch(BASE + "/response", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: c.id, success: false, response: "Refusing to destroy the DataModel" }),
-        });
-        return;
-      }
-      if (res.status !== 423) await sleep(100);
-    }
-  })();
-  const errResult = await errPromise;
-  check("plugin errors surface as isError", errResult.result?.isError === true);
+  const del = await rpc("tools/call", { name: "delete_instance", arguments: { path: "game" } });
+  check("plugin errors surface as isError", del.result?.isError === true);
 
   console.log(failures === 0 ? "\n🎉 ALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
+  pluginRunning = false;
   child.kill();
   process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch((e) => {
   console.error(e);
+  pluginRunning = false;
   child.kill();
   process.exit(1);
 });

@@ -5,13 +5,21 @@
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 
-local Config = require(script.Parent.Config)
+local PluginRef = require(script.Parent.PluginRef)
 local Transport = require(script.Parent.Transport)
 local Dispatcher = require(script.Parent.Dispatcher)
+local PlayMode = require(script.Parent.PlayMode)
 
--- Only act as the bridge in edit mode. During play tests a second DataModel
--- spins up; we don't want it fighting for the connection.
+-- Expose the plugin object for cross-DataModel settings (used by play mode).
+PluginRef.plugin = plugin
+
+-- Only the edit-mode instance owns the bridge connection. In a play/run
+-- DataModel this instance just watches (on the server) for a stop signal sent
+-- from edit mode, so play_control mode=stop can end the session.
 if RunService:IsRunning() then
+	if RunService:IsServer() then
+		task.spawn(PlayMode.monitorForStop)
+	end
 	return
 end
 
@@ -29,7 +37,7 @@ local function handleMessage(message: Transport.Message): (boolean, string)
 	end
 	local toolArgs = args[toolName]
 
-	if Dispatcher.isReadOnly(toolName) then
+	if Dispatcher.skipRecording(toolName) then
 		local ok, result = pcall(Dispatcher.dispatch, toolName, toolArgs)
 		return ok, ok and tostring(result or "") or tostring(result)
 	end

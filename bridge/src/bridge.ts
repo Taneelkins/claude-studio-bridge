@@ -15,10 +15,10 @@ import { log } from "./log.js";
 const PORT = Number(process.env.STUDIO_BRIDGE_PORT ?? 44755);
 /** How long to hold an idle GET /request before replying 423 (plugin retries). */
 const LONGPOLL_MS = 25_000;
-/** How long a tool call waits for the plugin before giving up. */
+/** Default time a tool call waits for the plugin before giving up. */
 const COMMAND_TIMEOUT_MS = 60_000;
-/** Plugin is considered connected if it polled within this window. */
-const CONNECTED_WINDOW_MS = 5_000;
+/** Treat the plugin as gone if there's no poll and no parked long-poll for this long. */
+const STALE_MS = 30_000;
 
 interface StudioMessage {
   id: string;
@@ -59,15 +59,28 @@ export class StudioBridge {
   }
 
   get connected(): boolean {
-    return Date.now() - this.lastPollAt < CONNECTED_WINDOW_MS;
+    // A healthy plugin is either parked in a long-poll (a waiter) or polled recently.
+    return this.waiters.length > 0 || Date.now() - this.lastPollAt < STALE_MS;
   }
 
   /**
    * Invoke a tool inside Studio. Resolves with the plugin's textual response,
-   * rejects on plugin-reported failure or timeout.
+   * rejects on plugin-reported failure or timeout. `timeoutMs` lets slow tools
+   * (e.g. play-mode runs) wait longer than the default.
    */
-  call(tool: string, args: unknown): Promise<string> {
+  call(tool: string, args: unknown, timeoutMs: number = COMMAND_TIMEOUT_MS): Promise<string> {
     return new Promise((resolve, reject) => {
+      // Fail fast when Studio clearly isn't there instead of hanging for the full timeout.
+      if (this.lastPollAt === 0 || (this.waiters.length === 0 && Date.now() - this.lastPollAt > STALE_MS)) {
+        reject(
+          new Error(
+            "Roblox Studio isn't connected. Open Studio with the Claude Bridge " +
+              "plugin enabled (click the Claude toolbar button), then retry.",
+          ),
+        );
+        return;
+      }
+
       const id = randomUUID();
       const message: StudioMessage = { id, args: { [tool]: args ?? {} } };
       const timer = setTimeout(() => {
@@ -75,11 +88,11 @@ export class StudioBridge {
         this.queue = this.queue.filter((c) => c.message.id !== id);
         reject(
           new Error(
-            `Timed out after ${COMMAND_TIMEOUT_MS}ms waiting for Studio. ` +
+            `Timed out after ${timeoutMs}ms waiting for Studio. ` +
               `Is Roblox Studio open with the Claude Bridge plugin enabled?`,
           ),
         );
-      }, COMMAND_TIMEOUT_MS);
+      }, timeoutMs);
 
       const cmd: PendingCommand = { message, resolve, reject, timer };
 

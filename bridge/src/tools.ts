@@ -147,13 +147,45 @@ export const TOOLS: ToolDef[] = [
   {
     name: "get_console_output",
     description:
-      "Return recent Studio output/console lines (prints, warnings, errors) with their message types.",
+      "Return recent Studio output/console lines (prints, warnings, errors) with their message types. NOTE: in edit mode this is the edit session's output; to capture a running game's output use run_in_play_mode.",
     schema: {
       count: z
         .number()
         .int()
         .optional()
         .describe("How many of the most recent lines to return. Default 60."),
+    },
+  },
+  {
+    name: "run_in_play_mode",
+    description:
+      "Start a real playtest, run the given Luau inside the RUNNING game (server context), capture all output/warnings/errors and any return value, then automatically stop. This is the way to verify runtime behavior end-to-end without the user present. Returns JSON: {success, ranWithoutError, logs[], errors[], errorCount, durationSeconds, timedOut, returned}. Use print() to surface values; thrown errors are caught and reported.",
+    schema: {
+      code: z
+        .string()
+        .describe(
+          "Luau to run in the running game (server side). e.g. require a module and assert behavior, then print results.",
+        ),
+      timeout: z
+        .number()
+        .optional()
+        .describe("Max seconds to let it run before auto-stopping. Default 10, max 120."),
+      mode: z
+        .enum(["start_play", "run_server"])
+        .optional()
+        .describe(
+          '"start_play" = Play Solo (a local Player exists); "run_server" = Run (server only, faster, no player). Default start_play.',
+        ),
+    },
+  },
+  {
+    name: "play_control",
+    description:
+      "Manually start or stop a playtest session. Does NOT capture output — use run_in_play_mode when you need the logs. Handy to start a session, inspect via other means, then stop.",
+    schema: {
+      mode: z
+        .enum(["start_play", "run_server", "stop"])
+        .describe('"start_play" / "run_server" to begin, "stop" to end the current session.'),
     },
   },
 ];
