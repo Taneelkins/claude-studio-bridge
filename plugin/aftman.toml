@@ -1,0 +1,4 @@
+# Pins Rojo so `rojo build` works inside this folder.
+# You already have this version in your aftman tool-storage.
+[tools]
+rojo = "rojo-rbx/rojo@7.7.0-rc.1"

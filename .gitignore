@@ -1,0 +1,14 @@
+# Node
+bridge/node_modules/
+bridge/dist/
+*.log
+
+# Build artifacts
+*.rbxm
+*.rbxmx
+*.rbxl
+*.rbxlx
+plugin/sourcemap.json
+
+# OS
+.DS_Store
