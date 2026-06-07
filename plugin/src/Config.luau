@@ -10,6 +10,7 @@ return {
 
 	-- Seconds to wait before retrying after the bridge is unreachable.
 	POLL_BACKOFF = 1,
-	-- Print a help hint after this many consecutive connection failures.
-	HINT_AFTER_FAILURES = 5,
+	-- Print a help hint only after this many consecutive failures (~seconds).
+	-- High enough that the brief reconnect after a playtest doesn't trigger it.
+	HINT_AFTER_FAILURES = 20,
 }

@@ -73,12 +73,11 @@ function Transport.start(handler: Handler): Connection
 				if failures >= Config.HINT_AFTER_FAILURES and not hintShown then
 					hintShown = true
 					warn(
-						"[Claude Bridge] Can't reach the bridge at "
-							.. Config.URL
-							.. ". Make sure the Node bridge is running (Claude Code launches it), "
-							.. "and that Studio is allowed to make HTTP requests "
-							.. '(Game Settings > Security > "Allow HTTP Requests", '
-							.. 'or run game:GetService("HttpService").HttpEnabled = true in the command bar).'
+						"[Claude Bridge] No connection to Claude Code for ~"
+							.. tostring(Config.HINT_AFTER_FAILURES)
+							.. "s. (A brief drop right after a playtest is normal and "
+							.. "reconnects on its own.) If it persists, make sure Claude Code "
+							.. "is open — it launches the bridge."
 					)
 				end
 				task.wait(Config.POLL_BACKOFF)
