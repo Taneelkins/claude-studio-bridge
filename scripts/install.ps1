@@ -44,17 +44,28 @@ Write-Host "Plugin installed -> $PluginsDir\ClaudeBridge.rbxm"
 & $Node (Join-Path $Root "scripts\register-mcp.mjs") $Entry
 if ($LASTEXITCODE -ne 0) { throw "MCP registration failed" }
 
-# --- Always-on daemon via Scheduled Task ---
+# --- Always-on daemon: try a Scheduled Task, fall back to a no-admin Startup launcher ---
 $TaskName = "ClaudeBridgeDaemon"
-$Action   = New-ScheduledTaskAction -Execute $Node -Argument "`"$Daemon`""
-$Trigger  = New-ScheduledTaskTrigger -AtLogOn
-$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `
-              -DontStopIfGoingOnBatteries -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 999
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings `
-  -Description "Claude Studio Bridge daemon (always-on)" | Out-Null
-Start-ScheduledTask -TaskName $TaskName
-Write-Host "Daemon scheduled task '$TaskName' installed and started."
+try {
+  $Action   = New-ScheduledTaskAction -Execute $Node -Argument "`"$Daemon`""
+  $Trigger  = New-ScheduledTaskTrigger -AtLogOn
+  $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `
+                -DontStopIfGoingOnBatteries -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 999
+  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings `
+    -Description "Claude Studio Bridge daemon (always-on)" -ErrorAction Stop | Out-Null
+  Start-ScheduledTask -TaskName $TaskName
+  Write-Host "Daemon installed as Scheduled Task '$TaskName' and started."
+} catch {
+  Write-Host "Scheduled Task unavailable ($($_.Exception.Message))."
+  Write-Host "Falling back to a no-admin Startup launcher..."
+  $cmd     = '"' + $Node + '" "' + $Daemon + '"'
+  $vbsLine = 'CreateObject("WScript.Shell").Run "' + ($cmd -replace '"', '""') + '", 0, False'
+  $vbsPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClaudeBridgeDaemon.vbs'
+  Set-Content -LiteralPath $vbsPath -Value $vbsLine -Encoding ASCII
+  Start-Process -FilePath $Node -ArgumentList ('"' + $Daemon + '"') -WindowStyle Hidden
+  Write-Host "Daemon set to auto-start via $vbsPath, and started now."
+}
 
 Write-Host ""
 Write-Host "Done. Next:"
