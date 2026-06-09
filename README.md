@@ -158,6 +158,19 @@ node scripts/register-mcp.mjs     # registers MCP with this device's node + path
 `register-mcp.mjs` auto-detects the device's own Node path and the repo location, so there's
 nothing to hand-edit per machine.
 
+### Moving a single conversation between machines
+Claude Code keeps chats as `~/.claude/projects/<encoded-abs-path>/<session-id>.jsonl`, keyed
+by the project's absolute path (which differs across OSes). To carry one chat over: copy its
+`.jsonl` into the matching project folder on the target machine. Because the old machine's
+paths are baked into the transcript, rewrite them first with:
+```bash
+node scripts/port-conversation.mjs <in.jsonl> <out.jsonl> "/old/path=>C:\new\path" [...]
+```
+It parses each line as JSON, so the output stays valid regardless of path separators. Keep the
+output filename equal to the session id. (Note: Claude Code chats are local files; unlike
+Claude.ai web chats they don't auto-sync. The built-in `claude remote-control` lets you drive
+one machine's live session from another device instead.)
+
 ## Verifying / testing
 
 - **Bridge logic, no Studio needed:** `cd bridge && npm run build && node smoke-test.mjs`
