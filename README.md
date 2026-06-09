@@ -123,6 +123,40 @@ Anything not covered? `run_code` is the escape hatch — Claude can do it in raw
 - Changed `plugin/src/**`? Re-run `./scripts/build-plugin.sh`, then restart Studio
   (or toggle the plugin button off/on).
 - Changed `bridge/src/**`? Run `cd bridge && npm run build`, then restart Claude Code.
+- Changed the plugin and want other devices to get it? Rebuild the shipped artifact:
+  `rojo build plugin/default.project.json -o release/ClaudeBridge.rbxm`, then commit it.
+
+## Transfer to another machine
+
+The code is on GitHub; only the per-device glue (paths, plugin folder, auto-start) needs
+setting up. The plugin ships **prebuilt** in `release/ClaudeBridge.rbxm`, so the target
+device doesn't need Rojo — only Node.js.
+
+### Windows
+In PowerShell (Node.js must be installed):
+```powershell
+git clone https://github.com/Taneelkins/claude-studio-bridge
+cd claude-studio-bridge
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+```
+This builds the bridge, copies the plugin to `%LOCALAPPDATA%\Roblox\Plugins`, registers the
+MCP server in `%USERPROFILE%\.claude.json`, and installs the always-on daemon as a Scheduled
+Task `ClaudeBridgeDaemon` (starts at logon, restarts on crash). Then restart Claude Code and
+open Studio.
+- Verify daemon: `Invoke-RestMethod http://127.0.0.1:44755/health`
+- Uninstall daemon: `Unregister-ScheduledTask -TaskName ClaudeBridgeDaemon -Confirm:$false`
+
+### Another Mac
+```bash
+git clone https://github.com/Taneelkins/claude-studio-bridge
+cd claude-studio-bridge/bridge && npm install && npm run build && cd ..
+cp release/ClaudeBridge.rbxm ~/Documents/Roblox/Plugins/
+node scripts/register-mcp.mjs     # registers MCP with this device's node + paths
+./scripts/install-daemon.sh       # always-on daemon (LaunchAgent)
+```
+
+`register-mcp.mjs` auto-detects the device's own Node path and the repo location, so there's
+nothing to hand-edit per machine.
 
 ## Verifying / testing
 

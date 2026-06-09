@@ -5,6 +5,7 @@ bridge/dist/
 
 # Build artifacts
 *.rbxm
+!release/ClaudeBridge.rbxm
 *.rbxmx
 *.rbxl
 *.rbxlx
