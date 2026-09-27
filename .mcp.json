@@ -3,7 +3,7 @@
     "roblox-studio": {
       "type": "stdio",
       "command": "/Users/taru/.nvm/versions/node/v24.14.0/bin/node",
-      "args": ["/Users/taru/Documents/claude-studio-bridge/bridge/dist/index.js"]
+      "args": ["/Users/taru/claude-studio-bridge/bridge/dist/index.js"]
     }
   }
 }
