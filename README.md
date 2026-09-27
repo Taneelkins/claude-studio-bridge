@@ -40,6 +40,64 @@ up, runs it against the DataModel, and posts the result back → Claude sees it.
 | `get_console_output` | Return recent output/warnings/errors |
 | `run_in_play_mode` | Start a real playtest, run test Luau in it, capture output/errors, auto-stop |
 | `play_control` | Manually start/stop a playtest (`start_play` / `run_server` / `stop`) |
+| `edit_script` | Replace an exact snippet in a script (no full-file resend) |
+| `search_scripts` | Grep every script's source → `{path, line, text}` |
+| `get_selection` / `set_selection` | Read / set what's selected in the Explorer |
+| `undo` / `redo` | Step Studio's change history |
+| `list_studios` / `select_studio` | See connected Studios; link this chat to one |
+| `upload_asset` | Upload a local image/audio/model/video → asset id (+ image id) |
+| `get_asset_status` | Moderation state + catalog info for an asset |
+| `list_uploaded_assets` | Search the ledger of everything uploaded through the bridge |
+| `insert_asset` | Insert any asset by id (model, mesh, sound, image…) |
+| `get_asset_info` | Catalog info for any asset id |
+| `resolve_image_id` | Decal id → the Image id `ImageLabel.Image` needs |
+| `publish_model` | Publish an instance from the place as a Model asset |
+
+`get_script_source` also takes `start_line` / `end_line` for numbered excerpts.
+
+## Multiple Studios, one link per chat
+
+Every Studio window identifies itself (place name, placeId, a per-session studioId)
+and gets its **own command queue** on the bridge. A command only ever runs in the
+Studio it was addressed to.
+
+Each Claude Code chat is **linked** to one Studio:
+- With only one Studio open, a chat links to it automatically on first use.
+- With several open, an unlinked chat refuses to guess. Call `select_studio`
+  (by place name, placeId, or studioId), and `list_studios` shows the choices.
+- The link is stored per chat session in `~/.claude-studio-bridge/bindings.json`,
+  so a resumed chat reconnects to the same place. It's matched by placeId, so it
+  survives restarting Studio.
+- Different chats can drive different Studios at the same time.
+- Optional per-project default: set `STUDIO_BRIDGE_PLACE_ID` in that project's
+  `.mcp.json` `env` and chats there auto-link to that place.
+
+## Assets
+
+`upload_asset` takes a file path on this computer and returns ready-to-use ids:
+
+| File | Becomes | Use it as |
+|------|---------|-----------|
+| .png .jpg .bmp .tga | Decal → **imageId** resolved automatically | `ImageLabel.Image`, `Decal.Texture`, … = `rbxassetid://<imageId>` |
+| .mp3 .ogg .wav .flac | Audio | `Sound.SoundId` |
+| .fbx .gltf .glb .rbxm | Model | `insert_asset` |
+| .mp4 .mov | Video | `VideoFrame.Video` |
+
+The asset's owner defaults to the **linked place's owner**, so group games get
+group-owned assets. Identical files are de-duplicated, and every upload is logged in
+`~/.claude-studio-bridge/assets.json` (`list_uploaded_assets`).
+
+**Two upload routes, picked automatically:**
+1. **Open Cloud** (recommended, does everything). One-time setup: create a key at
+   <https://create.roblox.com/dashboard/credentials> with the **Assets** API (Read + Write),
+   create it under the group for group games, then run in a terminal:
+   ```bash
+   node scripts/set-api-key.mjs
+   ```
+   The key is stored in `~/.claude-studio-bridge/config.json` (chmod 600), not in the repo.
+2. **No key:** PNG images up to 1024×1024 still upload *through Studio*
+   (EditableImage + `AssetService:CreateAssetAsync`, as the logged-in Studio account).
+   `publish_model` also needs no key.
 
 Every mutating call is wrapped in a single **undo step** (Ctrl/Cmd-Z reverts it).
 
@@ -194,6 +252,11 @@ one machine's live session from another device instead.)
   when prompted (Plugin management dialog), then retry.
 - **Node path changed (nvm upgrade)** — update the `command` path in `~/.claude.json`
   and `.mcp.json` to the new `which node`.
+- **"N Studios are connected and this chat hasn't picked one"** — call `select_studio`.
+  An *old* chat (started before v2) can't select: type `/mcp` in it and Reconnect
+  `roblox-studio`.
+- **Studio shows as "old plugin"** in `list_studios` — restart that Studio so it
+  loads the rebuilt plugin.
 - **Multiple Claude Code chats** — supported. With the **daemon** installed (recommended;
   `./scripts/install-daemon.sh`), it permanently owns the port and every chat forwards to
   it, so you can open/close chats freely without dropping the connection. Without the
@@ -201,7 +264,7 @@ one machine's live session from another device instead.)
   until another is elected. (Override the port on all ends with `STUDIO_BRIDGE_PORT`.)
 - **Connection keeps dropping when chats close** — install the daemon (above); that's
   exactly what it fixes. Check it's alive: `curl -s localhost:44755/health` and
-  `tail ~/Documents/claude-studio-bridge/bridge/daemon.log`.
+  `tail ~/claude-studio-bridge/bridge/daemon.log`.
 
 ## Security
 

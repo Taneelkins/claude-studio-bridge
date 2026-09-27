@@ -17,6 +17,17 @@ local handlers: { [string]: (any) -> string } = {
 	get_console_output = require(Tools.GetConsoleOutput),
 	run_in_play_mode = require(Tools.RunInPlayMode),
 	play_control = require(Tools.PlayControl),
+	edit_script = require(Tools.EditScript),
+	search_scripts = require(Tools.SearchScripts),
+	get_selection = require(Tools.GetSelection),
+	set_selection = require(Tools.SetSelection),
+	undo = require(Tools.UndoRedo).undo,
+	redo = require(Tools.UndoRedo).redo,
+	insert_asset = require(Tools.InsertAsset),
+	get_asset_info = require(Tools.GetAssetInfo),
+	resolve_image_id = require(Tools.ResolveImageId),
+	publish_model = require(Tools.PublishModel),
+	create_image_asset = require(Tools.CreateImageAsset),
 }
 
 -- Tools not wrapped in an undo recording: read-only queries, plus play-mode
@@ -29,6 +40,16 @@ local SKIP_RECORDING: { [string]: boolean } = {
 	get_console_output = true,
 	run_in_play_mode = true,
 	play_control = true,
+	search_scripts = true,
+	get_selection = true,
+	set_selection = true,
+	-- undo/redo drive the history themselves; a recording around them would break it.
+	undo = true,
+	redo = true,
+	get_asset_info = true,
+	resolve_image_id = true,
+	publish_model = true,
+	create_image_asset = true,
 }
 
 local Dispatcher = {}

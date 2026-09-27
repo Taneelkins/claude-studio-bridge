@@ -10,6 +10,7 @@
 local HttpService = game:GetService("HttpService")
 
 local Config = require(script.Parent.Config)
+local StudioInfo = require(script.Parent.StudioInfo)
 
 export type Message = { id: string, args: { [string]: any } }
 -- handler(message) -> success, responseText
@@ -27,7 +28,11 @@ local function httpRequest(method: string, url: string, body: any?)
 		return HttpService:RequestAsync({
 			Url = url,
 			Method = method,
-			Headers = { ["Content-Type"] = "application/json" },
+			Headers = {
+				["Content-Type"] = "application/json",
+				-- Tells the bridge which place this Studio has open (multi-Studio routing).
+				["X-Studio-Info"] = StudioInfo.header(),
+			},
 			Body = if body then HttpService:JSONEncode(body) else nil,
 			Compress = Enum.HttpCompression.None,
 		})
@@ -36,7 +41,7 @@ end
 
 function Transport.start(handler: Handler): Connection
 	local running = true
-	local requestUrl = Config.URL .. Config.REQUEST_ENDPOINT
+	local requestUrl = Config.URL .. Config.REQUEST_ENDPOINT .. "?studio=" .. StudioInfo.studioId
 	local responseUrl = Config.URL .. Config.RESPONSE_ENDPOINT
 	local failures = 0
 	local hintShown = false

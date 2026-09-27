@@ -86,9 +86,11 @@ export const TOOLS: ToolDef[] = [
   {
     name: "get_script_source",
     description:
-      "Read the full source code of a Script, LocalScript, or ModuleScript.",
+      "Read the source code of a Script, LocalScript, or ModuleScript. Pass start_line/end_line to read just a range (returned with line numbers).",
     schema: {
       path: z.string().describe('Path to the script instance.'),
+      start_line: z.number().int().optional().describe("First line to return (1-based). Enables numbered output."),
+      end_line: z.number().int().optional().describe("Last line to return (inclusive)."),
     },
   },
   {
@@ -188,4 +190,95 @@ export const TOOLS: ToolDef[] = [
         .describe('"start_play" / "run_server" to begin, "stop" to end the current session.'),
     },
   },
+  {
+    name: "edit_script",
+    description:
+      "Surgical script edit: replace an exact snippet of a script's source with new text, instead of resending the whole file. `old_string` must match exactly (whitespace included) and be unique unless replace_all is true. Returns the edited line range. Undoable.",
+    schema: {
+      path: z.string().describe("Path to the script instance."),
+      old_string: z.string().describe("Exact text to find (include enough surrounding lines to be unique)."),
+      new_string: z.string().describe("Replacement text."),
+      replace_all: z.boolean().optional().describe("Replace every occurrence. Default false."),
+    },
+  },
+  {
+    name: "search_scripts",
+    description:
+      "Grep the source of every script under an ancestor. Returns {path, line, text} matches. Use to find where something is defined/used across the whole place.",
+    schema: {
+      pattern: z.string().describe("Text to find (plain substring by default)."),
+      lua_pattern: z.boolean().optional().describe("Treat `pattern` as a Luau string pattern instead of plain text."),
+      case_sensitive: z.boolean().optional().describe("Default false."),
+      ancestor: z.string().optional().describe('Where to search. Default "game".'),
+      limit: z.number().int().optional().describe("Max matches. Default 200."),
+    },
+  },
+  {
+    name: "get_selection",
+    description:
+      "Return what the user currently has selected in Studio's Explorer ({name, className, path} each). Great for 'fix the thing I selected'.",
+    schema: {},
+  },
+  {
+    name: "set_selection",
+    description: "Select instances in Studio's Explorer (so the user can see what you mean). Pass an empty list to clear.",
+    schema: {
+      paths: z.array(z.string()).describe("Instance paths to select."),
+    },
+  },
+  {
+    name: "undo",
+    description: "Undo the last Studio change(s) (same as Ctrl/Cmd-Z). Every bridge write is one undo step.",
+    schema: {
+      steps: z.number().int().min(1).max(50).optional().describe("How many steps. Default 1."),
+    },
+  },
+  {
+    name: "redo",
+    description: "Redo the last undone Studio change(s).",
+    schema: {
+      steps: z.number().int().min(1).max(50).optional().describe("How many steps. Default 1."),
+    },
+  },
+  {
+    name: "insert_asset",
+    description:
+      "Insert a Roblox asset (model, mesh, package, decal, sound, etc.) into the place by id, e.g. a model you just uploaded. Returns the paths of what was inserted. Undoable.",
+    schema: {
+      asset_id: z.number().int().describe("The asset id."),
+      parent: z.string().optional().describe('Where to put it. Default "Workspace".'),
+      unpack: z
+        .boolean()
+        .optional()
+        .describe("Put the asset's contents directly under parent instead of the wrapper Model. Default true."),
+    },
+  },
+  {
+    name: "get_asset_info",
+    description:
+      "Look up any asset id's catalog info from Studio (name, type, creator, created/updated). Works for assets you don't own.",
+    schema: {
+      asset_id: z.number().int().describe("The asset id."),
+    },
+  },
+  {
+    name: "resolve_image_id",
+    description:
+      "Convert a Decal asset id into the Image id that ImageLabel.Image / Texture / SurfaceAppearance etc. actually need (rbxassetid://<imageId>). upload_asset does this automatically for images.",
+    schema: {
+      asset_id: z.number().int().describe("Decal asset id."),
+    },
+  },
+  {
+    name: "publish_model",
+    description:
+      "Publish an instance from the place (a Model, Part, Folder, UI, etc.) as a Roblox Model asset owned by the place owner (or the Studio user), returning the new asset id. Pass asset_id to publish a new version of an existing model instead. Uses the logged-in Studio account; no API key needed.",
+    schema: {
+      path: z.string().describe("Instance to publish."),
+      name: z.string().optional().describe("Asset name. Default the instance name."),
+      description: z.string().optional(),
+      asset_id: z.number().int().optional().describe("Existing model asset to update instead of creating a new one."),
+    },
+  },
 ];
+

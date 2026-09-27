@@ -4,6 +4,7 @@
 -- Node bridge, which binds 127.0.0.1.
 
 return {
+	VERSION = "2.0.0",
 	URL = "http://127.0.0.1:44755",
 	REQUEST_ENDPOINT = "/request",
 	RESPONSE_ENDPOINT = "/response",
