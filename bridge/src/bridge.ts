@@ -290,10 +290,11 @@ export class StudioBridge {
   private identify(req: http.IncomingMessage, url: URL): StudioConn {
     const id = url.searchParams.get("studio") || LEGACY_STUDIO_ID;
     let info: StudioInfo = { placeId: 0, gameId: 0, placeName: "Studio (old plugin — rebuild it)" };
-    const raw = req.headers["x-studio-info"];
+    const raw = url.searchParams.get("info") ?? req.headers["x-studio-info"];
     if (typeof raw === "string") {
       try {
-        info = { ...info, ...(JSON.parse(decodeURIComponent(raw)) as StudioInfo) };
+        // searchParams already percent-decodes; the header form (older v2 builds) doesn't.
+        info = { ...info, ...(JSON.parse(raw.startsWith("{") ? raw : decodeURIComponent(raw)) as StudioInfo) };
       } catch {
         // keep defaults
       }

@@ -62,7 +62,7 @@ async function pluginLoop(studioId, info) {
   const header = encodeURIComponent(JSON.stringify(info));
   while (pluginRunning) {
     let res;
-    try { res = await fetch(`${BASE}/request?studio=${studioId}`, { headers: { "x-studio-info": header } }); }
+    try { res = await fetch(`${BASE}/request?studio=${studioId}&info=${header}`); }
     catch { await sleep(100); continue; }
     if (res.status === 200) {
       const cmd = await res.json();

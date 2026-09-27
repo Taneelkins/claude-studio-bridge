@@ -57,8 +57,8 @@ function StudioInfo.get(): { [string]: any }
 	}
 end
 
--- URL-encoded JSON, safe to send as an HTTP header value.
-function StudioInfo.header(): string
+-- URL-encoded JSON for the poll's query string.
+function StudioInfo.encoded(): string
 	return HttpService:UrlEncode(HttpService:JSONEncode(StudioInfo.get()))
 end
 

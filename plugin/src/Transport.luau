@@ -28,11 +28,7 @@ local function httpRequest(method: string, url: string, body: any?)
 		return HttpService:RequestAsync({
 			Url = url,
 			Method = method,
-			Headers = {
-				["Content-Type"] = "application/json",
-				-- Tells the bridge which place this Studio has open (multi-Studio routing).
-				["X-Studio-Info"] = StudioInfo.header(),
-			},
+			Headers = { ["Content-Type"] = "application/json" },
 			Body = if body then HttpService:JSONEncode(body) else nil,
 			Compress = Enum.HttpCompression.None,
 		})
@@ -41,14 +37,18 @@ end
 
 function Transport.start(handler: Handler): Connection
 	local running = true
-	local requestUrl = Config.URL .. Config.REQUEST_ENDPOINT .. "?studio=" .. StudioInfo.studioId
+	-- The query string tells the bridge which Studio/place this is (multi-Studio
+	-- routing). Rebuilt every poll because the place can be published mid-session.
+	local function requestUrl(): string
+		return Config.URL .. Config.REQUEST_ENDPOINT .. "?studio=" .. StudioInfo.studioId .. "&info=" .. StudioInfo.encoded()
+	end
 	local responseUrl = Config.URL .. Config.RESPONSE_ENDPOINT
 	local failures = 0
 	local hintShown = false
 
 	task.spawn(function()
 		while running do
-			local ok, response = httpRequest("GET", requestUrl)
+			local ok, response = httpRequest("GET", requestUrl())
 
 			if ok and response and response.StatusCode == 200 and response.Success then
 				failures = 0
@@ -75,6 +75,10 @@ function Transport.start(handler: Handler): Connection
 				hintShown = false
 			else
 				failures += 1
+				if failures == 3 then
+					-- Surface the real reason once, so a broken setup is diagnosable from Output.
+					warn("[Claude Bridge] Poll failed: " .. (if ok and response then "HTTP " .. tostring(response.StatusCode) else tostring(response)))
+				end
 				if failures >= Config.HINT_AFTER_FAILURES and not hintShown then
 					hintShown = true
 					warn(
