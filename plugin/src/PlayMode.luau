@@ -84,6 +84,23 @@ task.spawn(function()
 	finish()
 end)
 
+-- the play window closed or disconnected: end the test, or Studio keeps waiting on it and refuses new ones
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local hadPlayer = false
+	while not finished do
+		local n = #Players:GetPlayers()
+		if n > 0 then hadPlayer = true elseif hadPlayer then
+			task.wait(2)
+			if #Players:GetPlayers() == 0 and not finished then
+				timedOut = true
+				finish()
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
 task.spawn(function()
 	userOk, userResult = pcall(function()
 ]==] .. code .. [==[
@@ -136,6 +153,9 @@ function PlayMode.runScript(code: string, timeout: number, mode: string): string
 	removeTestScript()
 
 	if not ok then
+		if string.find(tostring(result), "previous one is still in progress", 1, true) then
+			error("Studio still has an old test session open. Press Stop (the red square) if one is showing; if none is, a session died without ending and Studio needs a restart.")
+		end
 		error("Failed to run in play mode: " .. tostring(result))
 	end
 
@@ -161,6 +181,9 @@ function PlayMode.start(mode: string): string
 	task.wait(0.3)
 
 	if immediate then
+		if string.find(tostring(immediate.res), "previous one is still in progress", 1, true) then
+			return string.format("Could not start %s: Studio still has an old test session open. Press Stop if one is showing; if none is, a session died without ending and Studio needs a restart.", mode)
+		end
 		return string.format("Could not start %s (already in a session, or: %s)", mode, tostring(immediate.res))
 	end
 	return string.format("Started %s. Use play_control mode=stop to end it.", mode)
@@ -186,12 +209,26 @@ function PlayMode.monitorForStop()
 		return
 	end
 	plugin:SetSetting(STOP_FLAG, false)
+	local Players = game:GetService("Players")
+	local hadPlayer, emptySince = false, nil
 	while RunService:IsRunning() do
 		if plugin:GetSetting(STOP_FLAG) then
 			plugin:SetSetting(STOP_FLAG, false)
 			pcall(function()
 				StudioTestService:EndTest({ stoppedByClaude = true })
 			end)
+		end
+		-- the play window closed / disconnected but this server lived on: end it, or Studio refuses every new test
+		if #Players:GetPlayers() > 0 then
+			hadPlayer, emptySince = true, nil
+		elseif hadPlayer then
+			emptySince = emptySince or os.clock()
+			if os.clock() - emptySince > 3 then
+				pcall(function()
+					StudioTestService:EndTest({ endedBecause = "client left" })
+				end)
+				emptySince = os.clock() + 30
+			end
 		end
 		task.wait(1)
 	end
