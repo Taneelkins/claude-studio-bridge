@@ -23,6 +23,8 @@ if RunService:IsRunning() then
 	return
 end
 
+pcall(PlayMode.cleanup)
+
 local DISABLED_SETTING = "ClaudeBridgeDisabled"
 
 local function handleMessage(message: Transport.Message): (boolean, string)

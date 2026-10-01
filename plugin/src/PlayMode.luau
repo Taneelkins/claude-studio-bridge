@@ -117,6 +117,11 @@ local function removeTestScript()
 	end
 end
 
+-- a runner left behind when the bridge dropped mid-test: clear it when the plugin starts in edit mode
+function PlayMode.cleanup()
+	removeTestScript()
+end
+
 -- Runs `code` in a fresh play session, returning the captured result as JSON.
 function PlayMode.runScript(code: string, timeout: number, mode: string): string
 	local source = buildRunnerSource(code, timeout)
