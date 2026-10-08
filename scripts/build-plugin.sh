@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGINS_DIR="${ROBLOX_PLUGINS_DIR:-$HOME/Documents/Roblox/Plugins}"
-OUT="$PLUGINS_DIR/ClaudeBridge.rbxm"
+OUT="$PLUGINS_DIR/TaruTools.rbxm"
 
 # Resolve a runnable rojo: explicit $ROJO, then PATH, then aftman tool-storage.
 ROJO_BIN="${ROJO:-}"

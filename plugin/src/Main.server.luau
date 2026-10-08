@@ -57,7 +57,7 @@ local function handleMessage(message: Transport.Message): (boolean, string)
 	return ok, ok and tostring(result or "") or tostring(result)
 end
 
-local toolbar = plugin:CreateToolbar("Claude")
+local toolbar = plugin:CreateToolbar("Taru Tools")
 local button = toolbar:CreateButton(
 	"Claude Bridge",
 	"Toggle the connection to Claude Code",

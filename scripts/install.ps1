@@ -11,7 +11,7 @@
   on crash) so the Studio connection stays up across chats.
 
   Prereqs: Node.js on PATH (https://nodejs.org). No Rojo needed (the plugin is
-  shipped prebuilt in release\ClaudeBridge.rbxm).
+  shipped prebuilt in release\TaruTools.rbxm).
 #>
 $ErrorActionPreference = "Stop"
 
@@ -35,10 +35,10 @@ if (-not (Test-Path $Entry)) { throw "Build failed: $Entry missing" }
 # --- Install the plugin (prebuilt .rbxm, no Rojo) ---
 $PluginsDir = Join-Path $env:LOCALAPPDATA "Roblox\Plugins"
 New-Item -ItemType Directory -Force -Path $PluginsDir | Out-Null
-$Rbxm = Join-Path $Root "release\ClaudeBridge.rbxm"
+$Rbxm = Join-Path $Root "release\TaruTools.rbxm"
 if (-not (Test-Path $Rbxm)) { throw "Prebuilt plugin missing: $Rbxm" }
-Copy-Item $Rbxm (Join-Path $PluginsDir "ClaudeBridge.rbxm") -Force
-Write-Host "Plugin installed -> $PluginsDir\ClaudeBridge.rbxm"
+Copy-Item $Rbxm (Join-Path $PluginsDir "TaruTools.rbxm") -Force
+Write-Host "Plugin installed -> $PluginsDir\TaruTools.rbxm"
 
 # --- Register the MCP server (safe JSON merge via Node) ---
 & $Node (Join-Path $Root "scripts\register-mcp.mjs") $Entry

@@ -130,7 +130,7 @@ The installer steps below have already run; they're here for reference / other m
 2. **Build the plugin into your Studio Plugins folder**
    ```bash
    ./scripts/build-plugin.sh
-   # -> ~/Documents/Roblox/Plugins/ClaudeBridge.rbxm
+   # -> ~/Documents/Roblox/Plugins/TaruTools.rbxm
    ```
 3. **Register the MCP server with Claude Code** — added to `~/.claude.json` as
    `mcpServers.roblox-studio` (absolute paths to node + `bridge/dist/index.js`).
@@ -182,12 +182,12 @@ Anything not covered? `run_code` is the escape hatch — Claude can do it in raw
   (or toggle the plugin button off/on).
 - Changed `bridge/src/**`? Run `cd bridge && npm run build`, then restart Claude Code.
 - Changed the plugin and want other devices to get it? Rebuild the shipped artifact:
-  `rojo build plugin/default.project.json -o release/ClaudeBridge.rbxm`, then commit it.
+  `rojo build plugin/default.project.json -o release/TaruTools.rbxm`, then commit it.
 
 ## Transfer to another machine
 
 The code is on GitHub; only the per-device glue (paths, plugin folder, auto-start) needs
-setting up. The plugin ships **prebuilt** in `release/ClaudeBridge.rbxm`, so the target
+setting up. The plugin ships **prebuilt** in `release/TaruTools.rbxm`, so the target
 device doesn't need Rojo — only Node.js.
 
 ### Windows
@@ -208,7 +208,7 @@ open Studio.
 ```bash
 git clone https://github.com/Taneelkins/claude-studio-bridge
 cd claude-studio-bridge/bridge && npm install && npm run build && cd ..
-cp release/ClaudeBridge.rbxm ~/Documents/Roblox/Plugins/
+cp release/TaruTools.rbxm ~/Documents/Roblox/Plugins/
 node scripts/register-mcp.mjs     # registers MCP with this device's node + paths
 ./scripts/install-daemon.sh       # always-on daemon (LaunchAgent)
 ```

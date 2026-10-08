@@ -5,7 +5,7 @@ bridge/dist/
 
 # Build artifacts
 *.rbxm
-!release/ClaudeBridge.rbxm
+!release/TaruTools.rbxm
 *.rbxmx
 *.rbxl
 *.rbxlx
