@@ -6,12 +6,20 @@ export type Options = {
 	SpineSplit: number,
 	Fps: number,
 	RootScale: number,
+	RestBend: number,
+	TipFollow: number,
+	Simplify: number,
+	ArmsOn: number,
+	LegsOn: number,
+	Mirror: number,
 }
 
 export type Report = {
 	Keyframes: number,
+	Dense: number,
 	Length: number,
 	Poses: number,
+	Warnings: { string },
 }
 
 type Key = {
@@ -65,6 +73,12 @@ AnimationConverter.Defaults = {
 	SpineSplit = 0.5,
 	Fps = 30,
 	RootScale = 1,
+	RestBend = 1,
+	TipFollow = 1,
+	Simplify = 0.3,
+	ArmsOn = 1,
+	LegsOn = 1,
+	Mirror = 0,
 }
 
 local EasingFromPrevious = true
@@ -176,7 +190,12 @@ local function Collect(sequence: KeyframeSequence): ({ [string]: { Key } }, { Ke
 	return tracks, keyframes
 end
 
-local function ReadFrame(tracks: { [string]: { Key } }, time: number, scale: number): Frame
+local function Reflect(cframe: CFrame): CFrame
+	local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cframe:GetComponents()
+	return CFrame.new(-x, y, z, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
+end
+
+local function ReadFrame(tracks: { [string]: { Key } }, time: number, scale: number, mirror: boolean): Frame
 	local torsoValue, torsoWeight = Sample(tracks.Torso, time)
 	local torso = Flip * (torsoValue or CFrame.identity) * Flip:Inverse()
 	local headValue, headWeight = Sample(tracks.Head, time)
@@ -202,6 +221,20 @@ local function ReadFrame(tracks: { [string]: { Key } }, time: number, scale: num
 			}
 		end
 	end
+
+	if mirror then
+		frame.TorsoRot = Reflect(frame.TorsoRot)
+		frame.TorsoPos = Vector3.new(-frame.TorsoPos.X, frame.TorsoPos.Y, frame.TorsoPos.Z)
+		if frame.Head then
+			frame.Head = Reflect(frame.Head)
+		end
+		local swapped = {}
+		for index, data in frame.Limbs do
+			local partner = if index % 2 == 1 then index + 1 else index - 1
+			swapped[partner] = { Local = Reflect(data.Local), Weight = data.Weight }
+		end
+		frame.Limbs = swapped
+	end
 	return frame
 end
 
@@ -225,11 +258,11 @@ local function Track(tracker: Tracker, world: CFrame, dt: number): (number, numb
 	return drive, tracker.Speed
 end
 
-local function Advance(state: Spring, segment: Segment, drive: number, speed: number, amount: number, dt: number)
-	local target = math.clamp((segment.Rest + segment.Speed * speed) * amount, segment.Min, segment.Max)
+local function Advance(state: Spring, segment: Segment, drive: number, speed: number, amount: number, dt: number, restScale: number, gainScale: number)
+	local target = math.clamp((segment.Rest * restScale + segment.Speed * speed) * amount, segment.Min, segment.Max)
 	local acceleration = -Frequency * Frequency * (state.Angle - target)
 		- 2 * Damping * Frequency * state.Velocity
-		- segment.Gain * amount * drive
+		- segment.Gain * gainScale * amount * drive
 	state.Velocity += acceleration * dt
 	state.Angle += state.Velocity * dt
 	if state.Angle < segment.Min then
@@ -260,17 +293,18 @@ local function Simulate(tracks: { [string]: { Key } }, length: number, loop: boo
 	end
 
 	local function Step(time: number, record: number?)
-		local frame = ReadFrame(tracks, time, options.RootScale)
+		local frame = ReadFrame(tracks, time, options.RootScale, options.Mirror > 0.5)
 		for index, limb in Limbs do
 			local data = frame.Limbs[index]
 			if data then
 				local state = dynamics[index]
+				local amount = options.Secondary * (if limb.Leg then options.LegsOn else options.ArmsOn)
 				local upperWorld = frame.TorsoRot * data.Local
 				local drive, speed = Track(state.Upper, upperWorld, dt)
-				Advance(state.Mid, limb.Mid, drive, speed, options.Secondary, dt)
+				Advance(state.Mid, limb.Mid, drive, speed, amount, dt, options.RestBend, 1)
 				local lowerWorld = upperWorld * CFrame.Angles(state.Mid.Angle, 0, 0)
 				local tipDrive = Track(state.Lower, lowerWorld, dt)
-				Advance(state.End, limb.End, tipDrive, 0, options.Secondary, dt)
+				Advance(state.End, limb.End, tipDrive, 0, amount, dt, 1, options.TipFollow)
 				if record then
 					recorded[index].Mid[record] = state.Mid.Angle
 					recorded[index].End[record] = state.End.Angle
@@ -301,10 +335,25 @@ local function AddPose(parent: Instance, name: string, cframe: CFrame, weight: n
 	return pose
 end
 
-local function Timeline(keyframes: { Keyframe }, length: number, fps: number): { { Time: number, Source: Keyframe? } }
-	local entries: { { Time: number, Source: Keyframe? } } = {}
+type PoseData = { CFrame: CFrame, Weight: number }
+
+type Entry = {
+	Time: number,
+	Source: Keyframe?,
+	Forced: boolean,
+	Poses: { [string]: PoseData },
+}
+
+local function Timeline(keyframes: { Keyframe }, length: number, fps: number): { Entry }
+	local entries: { Entry } = {}
 	for _, keyframe in keyframes do
-		table.insert(entries, { Time = keyframe.Time, Source = keyframe })
+		local forced = keyframe.Name ~= "Keyframe"
+		for _, child in keyframe:GetChildren() do
+			if child:IsA("KeyframeMarker") then
+				forced = true
+			end
+		end
+		table.insert(entries, { Time = keyframe.Time, Source = keyframe, Forced = forced, Poses = {} })
 	end
 	local gap = 0.35 / fps
 	for index = 0, math.floor(length * fps) do
@@ -317,14 +366,131 @@ local function Timeline(keyframes: { Keyframe }, length: number, fps: number): {
 			end
 		end
 		if not near then
-			table.insert(entries, { Time = time, Source = nil })
+			table.insert(entries, { Time = time, Source = nil, Forced = false, Poses = {} })
 		end
 	end
 	table.sort(entries, function(a, b)
 		return a.Time < b.Time
 	end)
+	entries[1].Forced = true
+	entries[#entries].Forced = true
 	return entries
 end
+
+local function Angle(a: CFrame, b: CFrame): number
+	local _, angle = (a:Inverse() * b):ToAxisAngle()
+	return math.abs(angle)
+end
+
+local function PoseError(entries: { Entry }, low: number, high: number, middle: number): number
+	local first, last, mid = entries[low], entries[high], entries[middle]
+	local alpha = (mid.Time - first.Time) / math.max(last.Time - first.Time, 1e-6)
+	local worst = 0
+	for name, data in mid.Poses do
+		local a, b = first.Poses[name], last.Poses[name]
+		if a and b then
+			local guess = a.CFrame:Lerp(b.CFrame, alpha)
+			local deviation = Angle(guess, data.CFrame) + 0.25 * (guess.Position - data.CFrame.Position).Magnitude
+			worst = math.max(worst, deviation)
+		end
+	end
+	return worst
+end
+
+local function Reduce(entries: { Entry }, tolerance: number): { Entry }
+	if tolerance <= 0 then
+		return entries
+	end
+	local keep: { [number]: boolean } = {}
+	local forced: { number } = {}
+	for index, entry in entries do
+		if entry.Forced then
+			keep[index] = true
+			table.insert(forced, index)
+		end
+	end
+	local stack: { { number } } = {}
+	for position = 1, #forced - 1 do
+		table.insert(stack, { forced[position], forced[position + 1] })
+	end
+	while #stack > 0 do
+		local range = table.remove(stack) :: { number }
+		local low, high = range[1], range[2]
+		local worst, worstIndex = 0, 0
+		for middle = low + 1, high - 1 do
+			local deviation = PoseError(entries, low, high, middle)
+			if deviation > worst then
+				worst, worstIndex = deviation, middle
+			end
+		end
+		if worst > tolerance and worstIndex > 0 then
+			keep[worstIndex] = true
+			table.insert(stack, { low, worstIndex })
+			table.insert(stack, { worstIndex, high })
+		end
+	end
+	local kept: { Entry } = {}
+	for index, entry in entries do
+		if keep[index] then
+			table.insert(kept, entry)
+		end
+	end
+	return kept
+end
+
+local function Inspect(entries: { Entry }, loop: boolean): { string }
+	local warnings: { string } = {}
+	local snaps = 0
+	for index = 2, #entries do
+		local previous, current = entries[index - 1], entries[index]
+		local dt = math.max(current.Time - previous.Time, 1e-3)
+		for name, data in current.Poses do
+			local before = previous.Poses[name]
+			if before and data.Weight > 0.5 and Angle(before.CFrame, data.CFrame) / dt > 35 then
+				snaps += 1
+				if snaps <= 3 then
+					table.insert(warnings, string.format("Fast snap in %s at %.2fs", name, current.Time))
+				end
+			end
+		end
+	end
+	if snaps > 3 then
+		table.insert(warnings, string.format("%d more fast snaps", snaps - 3))
+	end
+
+	if loop and #entries > 1 then
+		local first, last = entries[1], entries[#entries]
+		local worst, worstName = 0, ""
+		for name, data in first.Poses do
+			local other = last.Poses[name]
+			if other and data.Weight > 0.5 then
+				local gap = Angle(data.CFrame, other.CFrame)
+				if gap > worst then
+					worst, worstName = gap, name
+				end
+			end
+		end
+		if worst > 0.12 then
+			table.insert(warnings, string.format("Loop does not close: %s differs %d° between first and last frame", worstName, math.round(math.deg(worst))))
+		end
+	end
+
+	local travel = 0
+	local origin = entries[1].Poses.LowerTorso
+	for _, entry in entries do
+		local data = entry.Poses.LowerTorso
+		if data and origin then
+			travel = math.max(travel, (data.CFrame.Position - origin.CFrame.Position).Magnitude)
+		end
+	end
+	if travel > 3 then
+		table.insert(warnings, string.format("Torso travels %.1f studs, check Root scale", travel))
+	end
+	return warnings
+end
+
+AnimationConverter.Collect = Collect
+AnimationConverter.Sample = Sample
 
 function AnimationConverter.Convert(source: KeyframeSequence, given: Options?): (KeyframeSequence, Report)
 	local options: Options = table.clone(AnimationConverter.Defaults)
@@ -347,25 +513,83 @@ function AnimationConverter.Convert(source: KeyframeSequence, given: Options?): 
 
 	local length = keyframes[#keyframes].Time
 	local split = math.clamp(options.SpineSplit, 0, 1)
+	local mirror = options.Mirror > 0.5
 	local entries = Timeline(keyframes, length, math.max(options.Fps, 1))
 	local recorded, steps = Simulate(tracks, length, source.Loop, options)
+	local warnings: { string } = {}
+
+	for _, entry in entries do
+		local time = entry.Time
+		local frame = ReadFrame(tracks, time, options.RootScale, mirror)
+		local position = math.min(time * SimRate, steps - 1)
+		local low = math.floor(position)
+		local high = math.min(low + 1, steps - 1)
+		local blend = position - low
+
+		local poses = entry.Poses
+		local spineTop = Fraction(frame.TorsoRot, split)
+		poses.HumanoidRootPart = { CFrame = frame.Root or CFrame.identity, Weight = frame.RootWeight }
+		poses.LowerTorso = { CFrame = CFrame.new(frame.TorsoPos) * Fraction(frame.TorsoRot, 1 - split), Weight = frame.TorsoWeight }
+		poses.UpperTorso = { CFrame = spineTop, Weight = frame.TorsoWeight }
+		if frame.Head then
+			poses.Head = { CFrame = frame.Head, Weight = frame.HeadWeight }
+		end
+		for index, limb in Limbs do
+			local data = frame.Limbs[index]
+			if data then
+				local read = recorded[index]
+				local mid = read.Mid[low + 1] + (read.Mid[high + 1] - read.Mid[low + 1]) * blend
+				local tip = read.End[low + 1] + (read.End[high + 1] - read.End[low + 1]) * blend
+				poses[limb.Upper] = { CFrame = if limb.Leg then spineTop * data.Local else data.Local, Weight = data.Weight }
+				poses[limb.Lower] = { CFrame = CFrame.Angles(mid, 0, 0), Weight = data.Weight }
+				poses[limb.Tip] = { CFrame = CFrame.Angles(tip, 0, 0), Weight = data.Weight }
+			end
+		end
+	end
+
+	for _, issue in Inspect(entries, source.Loop) do
+		table.insert(warnings, issue)
+	end
+	for index, limb in Limbs do
+		local read = recorded[index]
+		local bound = if limb.Mid.Max > 0 then limb.Mid.Max else limb.Mid.Min
+		local hits = 0
+		for step = 1, steps do
+			if math.abs(read.Mid[step]) >= math.abs(bound) * 0.97 then
+				hits += 1
+			end
+		end
+		if hits > steps * 0.1 then
+			table.insert(warnings, string.format("%s is at full bend %d%% of the time, lower Secondary motion", limb.Lower, math.round(hits / steps * 100)))
+		end
+	end
+
+	local dense = #entries
+	local kept = Reduce(entries, options.Simplify * 0.05)
 
 	local result = Instance.new("KeyframeSequence")
 	result.Name = source.Name .. "_R15"
 	result.Loop = source.Loop
 	result.Priority = source.Priority
 
-	local poseCount = 0
-	for _, entry in entries do
-		local time = entry.Time
-		local frame = ReadFrame(tracks, time, options.RootScale)
-		local position = math.min(time * SimRate, steps - 1)
-		local low = math.floor(position)
-		local high = math.min(low + 1, steps - 1)
-		local blend = position - low
+	local order = { "HumanoidRootPart", "LowerTorso", "UpperTorso" }
+	local parentOf: { [string]: string } = { LowerTorso = "HumanoidRootPart", UpperTorso = "LowerTorso", Head = "UpperTorso" }
+	for _, limb in Limbs do
+		parentOf[limb.Upper] = if limb.Leg then "LowerTorso" else "UpperTorso"
+		parentOf[limb.Lower] = limb.Upper
+		parentOf[limb.Tip] = limb.Lower
+	end
+	table.insert(order, "Head")
+	for _, limb in Limbs do
+		table.insert(order, limb.Upper)
+		table.insert(order, limb.Lower)
+		table.insert(order, limb.Tip)
+	end
 
+	local poseCount = 0
+	for _, entry in kept do
 		local keyframe = Instance.new("Keyframe")
-		keyframe.Time = time
+		keyframe.Time = entry.Time
 		if entry.Source then
 			keyframe.Name = entry.Source.Name
 			for _, child in entry.Source:GetChildren() do
@@ -377,36 +601,19 @@ function AnimationConverter.Convert(source: KeyframeSequence, given: Options?): 
 				end
 			end
 		end
-
-		local spineTop = Fraction(frame.TorsoRot, split)
-		local root = AddPose(keyframe, "HumanoidRootPart", frame.Root or CFrame.identity, frame.RootWeight)
-		local lower = AddPose(root, "LowerTorso", CFrame.new(frame.TorsoPos) * Fraction(frame.TorsoRot, 1 - split), frame.TorsoWeight)
-		local upper = AddPose(lower, "UpperTorso", spineTop, frame.TorsoWeight)
-		poseCount += 3
-		if frame.Head then
-			AddPose(upper, "Head", frame.Head, frame.HeadWeight)
-			poseCount += 1
-		end
-
-		for index, limb in Limbs do
-			local data = frame.Limbs[index]
+		local made: { [string]: Pose } = {}
+		for _, name in order do
+			local data = entry.Poses[name]
 			if data then
-				local read = recorded[index]
-				local mid = read.Mid[low + 1] + (read.Mid[high + 1] - read.Mid[low + 1]) * blend
-				local tip = read.End[low + 1] + (read.End[high + 1] - read.End[low + 1]) * blend
-				local parent = if limb.Leg then lower else upper
-				local rotation = if limb.Leg then spineTop * data.Local else data.Local
-				local upperPose = AddPose(parent, limb.Upper, rotation, data.Weight)
-				local lowerPose = AddPose(upperPose, limb.Lower, CFrame.Angles(mid, 0, 0), data.Weight)
-				AddPose(lowerPose, limb.Tip, CFrame.Angles(tip, 0, 0), data.Weight)
-				poseCount += 3
+				local parentName = parentOf[name]
+				made[name] = AddPose(if parentName then made[parentName] else keyframe, name, data.CFrame, data.Weight)
+				poseCount += 1
 			end
 		end
-
 		keyframe.Parent = result
 	end
 
-	return result, { Keyframes = #entries, Length = length, Poses = poseCount }
+	return result, { Keyframes = #kept, Dense = dense, Length = length, Poses = poseCount, Warnings = warnings }
 end
 
 return AnimationConverter

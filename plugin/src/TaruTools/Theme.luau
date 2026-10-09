@@ -1,6 +1,4 @@
 --!nonstrict
-local UserInputService = game:GetService("UserInputService")
-
 local Theme = {}
 
 Theme.Colors = {
@@ -13,6 +11,7 @@ Theme.Colors = {
 	Bright = Color3.fromRGB(242, 242, 245),
 	Good = Color3.fromRGB(132, 190, 148),
 	Bad = Color3.fromRGB(208, 102, 92),
+	Warn = Color3.fromRGB(212, 168, 92),
 }
 
 Theme.Sans = Enum.Font.BuilderSans
@@ -134,6 +133,34 @@ function Theme.Button(parent, text, order, onClick, width)
 	return handle
 end
 
+function Theme.Chip(parent, text, order, onClick)
+	local chip = Instance.new("TextButton")
+	chip.AutoButtonColor = false
+	chip.BackgroundColor3 = Theme.Colors.Surface
+	chip.BorderSizePixel = 0
+	chip.Font = Theme.Sans
+	chip.TextSize = 12
+	chip.Text = text
+	chip.TextColor3 = Theme.Colors.Text
+	chip.AutomaticSize = Enum.AutomaticSize.X
+	chip.Size = UDim2.fromOffset(0, 24)
+	chip.LayoutOrder = order
+	chip.Parent = parent
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.Parent = chip
+	local stroke = Stroke(chip)
+	chip.MouseEnter:Connect(function()
+		stroke.Color = Theme.Colors.Muted
+	end)
+	chip.MouseLeave:Connect(function()
+		stroke.Color = Theme.Colors.Rule
+	end)
+	chip.MouseButton1Click:Connect(onClick)
+	return chip
+end
+
 function Theme.Input(parent, placeholder, order, width, position)
 	local box = Instance.new("TextBox")
 	box.BackgroundColor3 = Theme.Colors.Surface
@@ -164,26 +191,81 @@ function Theme.Input(parent, placeholder, order, width, position)
 	return box
 end
 
+function Theme.Drag(onMove, onEnd, source)
+	local host = Theme.Host
+	local overlay = Instance.new("TextButton")
+	overlay.Text = ""
+	overlay.AutoButtonColor = false
+	overlay.BackgroundTransparency = 1
+	overlay.BorderSizePixel = 0
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.ZIndex = 1000
+	overlay.Parent = host
+
+	local finished = false
+	local focusLost
+	local function Finish()
+		if finished then
+			return
+		end
+		finished = true
+		if focusLost then
+			focusLost:Disconnect()
+		end
+		overlay:Destroy()
+		if onEnd then
+			onEnd()
+		end
+	end
+
+	overlay.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			onMove(input)
+		end
+	end)
+	overlay.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			Finish()
+		end
+	end)
+	overlay.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			Finish()
+		end
+	end)
+	overlay.MouseButton1Up:Connect(Finish)
+	overlay.MouseLeave:Connect(Finish)
+	focusLost = host.WindowFocusReleased:Connect(Finish)
+	if source then
+		source.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				Finish()
+			end
+		end)
+	end
+end
+
 function Theme.Slider(parent, order, config)
-	local row = Theme.Row(parent, 36, order)
-	Theme.Label(row, config.Label, {
-		Color = Theme.Colors.Text,
-		Size = UDim2.new(1, -64, 0, 16),
-	})
-	local value = Theme.Label(row, "", {
-		Font = Theme.Mono,
-		TextSize = 12,
-		Color = Theme.Colors.Bright,
-		Align = Enum.TextXAlignment.Right,
-		Size = UDim2.fromOffset(60, 16),
-		Position = UDim2.new(1, -60, 0, 0),
-	})
+	local row = Theme.Row(parent, 38, order)
+	Theme.Label(row, config.Label, { Size = UDim2.new(1, -74, 0, 16) })
+
+	local value = Instance.new("TextBox")
+	value.BackgroundTransparency = 1
+	value.BorderSizePixel = 0
+	value.ClearTextOnFocus = true
+	value.Font = Theme.Mono
+	value.TextSize = 12
+	value.TextColor3 = Theme.Colors.Bright
+	value.TextXAlignment = Enum.TextXAlignment.Right
+	value.Size = UDim2.fromOffset(70, 16)
+	value.Position = UDim2.new(1, -70, 0, 0)
+	value.Parent = row
 
 	local hit = Instance.new("Frame")
 	hit.BackgroundTransparency = 1
 	hit.BorderSizePixel = 0
 	hit.Position = UDim2.fromOffset(0, 16)
-	hit.Size = UDim2.new(1, 0, 0, 20)
+	hit.Size = UDim2.new(1, 0, 0, 22)
 	hit.Parent = row
 
 	local track = Instance.new("Frame")
@@ -207,47 +289,62 @@ function Theme.Slider(parent, order, config)
 	thumb.Size = UDim2.fromOffset(6, 14)
 	thumb.Parent = track
 
+	local min, max = config.Min, config.Max
 	local current = config.Value
 	local function Render()
-		local alpha = (current - config.Min) / (config.Max - config.Min)
+		local alpha = if max > min then (current - min) / (max - min) else 0
 		fill.Size = UDim2.fromScale(alpha, 1)
 		thumb.Position = UDim2.new(alpha, 0, 0.5, 0)
 		value.Text = string.format("%." .. (config.Decimals or 2) .. "f", current)
 	end
 
+	local function Commit(raw, silent)
+		local step = config.Step or 0.01
+		current = math.clamp(math.round(raw / step) * step, min, max)
+		Render()
+		if not silent then
+			config.OnChange(current)
+		end
+	end
+
 	local function Apply(x)
 		local width = math.max(track.AbsoluteSize.X, 1)
 		local alpha = math.clamp((x - track.AbsolutePosition.X) / width, 0, 1)
-		local raw = config.Min + alpha * (config.Max - config.Min)
-		local step = config.Step or 0.01
-		current = math.clamp(math.round(raw / step) * step, config.Min, config.Max)
-		Render()
-		config.OnChange(current)
+		Commit(min + alpha * (max - min), false)
 	end
 
-	local dragging = false
 	hit.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
 			Apply(input.Position.X)
-		end
-	end)
-	hit.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-				Apply(input.Position.X)
-			else
-				dragging = false
+			if config.OnDragStart then
+				config.OnDragStart()
 			end
+			Theme.Drag(function(moved)
+				Apply(moved.Position.X)
+			end, config.OnDragEnd, hit)
 		end
 	end)
-	hit.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
+
+	value.FocusLost:Connect(function()
+		local typed = tonumber(value.Text)
+		if typed then
+			Commit(typed, false)
+		else
+			Render()
 		end
 	end)
 
 	Render()
+
+	local handle = {}
+	function handle.Set(newValue)
+		Commit(newValue, true)
+	end
+	function handle.SetRange(newMin, newMax)
+		min, max = newMin, newMax
+		Commit(current, true)
+	end
+	return handle
 end
 
 function Theme.Segmented(parent, order, config)
@@ -295,6 +392,59 @@ function Theme.Segmented(parent, order, config)
 		end)
 	end
 	Render()
+
+	return {
+		Set = function(option)
+			selected = option
+			Render()
+		end,
+	}
+end
+
+function Theme.Toggle(parent, order, config)
+	local row = Theme.Row(parent, 28, order)
+	Theme.Label(row, config.Label, { Size = UDim2.new(1, -30, 1, 0) })
+
+	local box = Instance.new("Frame")
+	box.BackgroundColor3 = Theme.Colors.Surface
+	box.BorderSizePixel = 0
+	box.AnchorPoint = Vector2.new(1, 0.5)
+	box.Position = UDim2.new(1, 0, 0.5, 0)
+	box.Size = UDim2.fromOffset(16, 16)
+	box.Parent = row
+	Stroke(box)
+
+	local mark = Instance.new("Frame")
+	mark.BackgroundColor3 = Theme.Colors.Bright
+	mark.BorderSizePixel = 0
+	mark.AnchorPoint = Vector2.new(0.5, 0.5)
+	mark.Position = UDim2.fromScale(0.5, 0.5)
+	mark.Size = UDim2.fromOffset(8, 8)
+	mark.Parent = box
+
+	local click = Instance.new("TextButton")
+	click.Text = ""
+	click.BackgroundTransparency = 1
+	click.Size = UDim2.fromScale(1, 1)
+	click.Parent = row
+
+	local on = config.Value
+	local function Render()
+		mark.Visible = on
+	end
+	click.MouseButton1Click:Connect(function()
+		on = not on
+		Render()
+		config.OnChange(on)
+	end)
+	Render()
+
+	return {
+		Set = function(value)
+			on = value
+			Render()
+		end,
+	}
 end
 
 return Theme
