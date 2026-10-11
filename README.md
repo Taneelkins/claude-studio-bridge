@@ -52,6 +52,7 @@ up, runs it against the DataModel, and posts the result back → Claude sees it.
 | `get_asset_info` | Catalog info for any asset id |
 | `resolve_image_id` | Decal id → the Image id `ImageLabel.Image` needs |
 | `publish_model` | Publish an instance from the place as a Model asset |
+| `export_to_blender` | Export an instance (parts, MeshParts, textures) for a 1:1 rebuild in Blender |
 
 `get_script_source` also takes `start_line` / `end_line` for numbered excerpts.
 
@@ -100,6 +101,46 @@ group-owned assets. Identical files are de-duplicated, and every upload is logge
    `publish_model` also needs no key.
 
 Every mutating call is wrapped in a single **undo step** (Ctrl/Cmd-Z reverts it).
+
+## Export to Blender
+
+`export_to_blender` takes any instance in the linked Studio and writes a folder Blender can rebuild
+exactly. It's read-only and goes through the plugin's existing `run_code`, so it needs **no plugin update**.
+
+```
+<out_dir>/<Name>/
+  scene.json      every node: raw CFrame, Size, shape, Color, Material, Transparency, mesh/texture refs
+                  + the Studio camera (CFrame, FOV, viewport) at export time
+  meshes/<id>.bin MeshPart geometry read with EditableMesh (positions, UVs, normals, faces)
+  textures/<id>.png
+  report.md       every placeholder and skipped class, with the reason
+  rbx_import.py   the importer (a copy of blender/rbx_import.py), so the folder stands alone
+```
+
+- **Parts:** Block, Cylinder, Ball, Wedge, CornerWedge (and SpecialMesh Brick/Cylinder/Sphere/Wedge/FileMesh)
+  with exact size and CFrame. Material becomes a flat colour on a Principled BSDF (Neon emits, Metal is
+  metallic, transparency → alpha); the Roblox material name is kept as a custom property.
+- **MeshParts:** real geometry when Roblox lets Studio read the mesh (your own uploads). Anything else
+  (other people's meshes, unions) becomes a wireframe `[PH]` box at the true bounds plus a report line.
+- **Textures:** `TextureID` and `SurfaceAppearance.ColorMap`. Tries Open Cloud first (the key needs the
+  `legacy-asset:manage` permission, which group keys may not offer), then reads the image in Studio with
+  EditableImage (your own images, no key needed). Anything unreadable gets a magenta checker + report line.
+- **Hierarchy:** one collection per export; Models/Folders become empties (Models at their pivot), names
+  kept, full Roblox path in each object's `rbx_path` property. Fully transparent parts are imported hidden
+  (Alt+H shows them).
+- **Coordinates:** Blender (x, y, z) = Roblox (x, −z, y), 1 stud = 1 unit, object scale 1. Measured on the
+  Long Winter carriage/horse/house: worst corner error 0.0005 studs (float32).
+- Duplicate names: `Workspace.HousePreview.HomeHouse[2]` = the 2nd child called HomeHouse.
+
+Import:
+```bash
+# live, through blender-mcp (execute_blender_code); only adds a collection, never deletes anything
+exec(open("<dir>/rbx_import.py").read()); import_roblox("<dir>")
+# headless
+Blender --background --python <dir>/rbx_import.py -- <dir> --save <dir>/out.blend
+```
+From a terminal instead of a chat: `node scripts/export-to-blender.mjs <instance path> [out_dir] [placeId]`.
+Needs Node 22.15+ (zstd). Big textures take a few seconds each (they come over in ~1 MB pages).
 
 ### Self-verification (play mode)
 

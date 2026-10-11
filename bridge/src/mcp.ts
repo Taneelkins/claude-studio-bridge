@@ -16,6 +16,7 @@ import { log } from "./log.js";
 import type { StudioSummary, Target } from "./bridge.js";
 import { loadBinding, otherChatsByPlace, saveBinding, SESSION_KEY, type Binding } from "./store.js";
 import { assetStatus, listUploaded, uploadAsset, type StudioCtx } from "./assets.js";
+import { exportToBlender } from "./export.js";
 
 /** Runs a tool in Studio. Either bridge.call (owner) or an HTTP forward (client). */
 export type Invoke = (tool: string, args: unknown, timeoutMs?: number, target?: Target) => Promise<string>;
@@ -226,6 +227,29 @@ export async function startMcp(invoke: Invoke, listStudios: ListStudios): Promis
       type: z.string().optional().describe('Filter by type, e.g. "Audio", "Decal", "Image", "Model".'),
     },
     async ({ query, type }) => ok(listUploaded(query, type)),
+  );
+
+  // ---------- Blender export ----------
+
+  server.tool(
+    "export_to_blender",
+    "Export an instance from the linked Studio (Model, Folder, part, anything) so Blender can rebuild it exactly: Parts (Block/Cylinder/Ball/Wedge/CornerWedge) with size, CFrame, colour, material, transparency; MeshParts as real geometry via EditableMesh where Roblox allows it (your own uploads); TextureID / SurfaceAppearance ColorMaps for your own images. Anything unreadable (unions, other people's meshes/images) becomes a labelled placeholder listed in report.md, never a silent skip. Read-only. Writes <out_dir>/<Name>/ with scene.json, meshes/, textures/, report.md and rbx_import.py, and returns the Blender import command (live through blender-mcp or headless). Pass out_dir = the current task's Work folder.",
+    {
+      path: z.string().describe('Instance to export, e.g. "Workspace.AssetBaseplate.Carriage" or "game.ServerStorage.Props". Duplicate names: "Workspace.HousePreview.HomeHouse[2]" = the 2nd child named HomeHouse.'),
+      out_dir: z
+        .string()
+        .optional()
+        .describe("Folder to write into (a <Name> subfolder is created). Use the current task's Work folder. Default: ./Blender Export"),
+      meshes: z.boolean().optional().describe("Read MeshPart geometry. Default true; false = bounding-box placeholders."),
+      textures: z.boolean().optional().describe("Fetch textures. Default true."),
+    },
+    async (args) => {
+      try {
+        return ok(await exportToBlender(args, ctx));
+      } catch (err) {
+        return fail(err);
+      }
+    },
   );
 
   await server.connect(new StdioServerTransport());

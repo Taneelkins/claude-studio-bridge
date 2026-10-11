@@ -103,7 +103,8 @@ async function main() {
 
   const tools = await ownerClient.rpc("tools/list", {});
   const names = (tools.result?.tools ?? []).map((t) => t.name);
-  check(`tools/list returns 27 tools (${names.length})`, names.length === 27);
+  check(`tools/list returns 28 tools (${names.length})`, names.length === 28);
+  check("includes export_to_blender", names.includes("export_to_blender"));
   for (const n of ["run_code", "set_script_source", "run_in_play_mode", "play_control", "list_studios", "select_studio", "upload_asset", "edit_script"]) {
     check(`includes ${n}`, names.includes(n));
   }
