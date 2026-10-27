@@ -1,5 +1,7 @@
 # Claude Studio Bridge
 
+![Claude Code](https://img.shields.io/badge/Claude%20Code-MCP-D97757) ![Roblox Studio](https://img.shields.io/badge/Roblox%20Studio-plugin-00A2FF?logo=roblox&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-Node-3178C6?logo=typescript&logoColor=white) ![Luau](https://img.shields.io/badge/Luau-Rojo-2C2D72) ![License](https://img.shields.io/badge/license-MIT-blue)
+
 Wires **Claude Code** directly into **Roblox Studio** with full Explorer access.
 Claude can read your place's hierarchy, inspect properties, read and edit scripts,
 create/delete/move instances, set properties, and run arbitrary Luau — all live in
