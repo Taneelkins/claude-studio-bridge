@@ -2,10 +2,21 @@
 
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-MCP-D97757) ![Roblox Studio](https://img.shields.io/badge/Roblox%20Studio-plugin-00A2FF?logo=roblox&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-Node-3178C6?logo=typescript&logoColor=white) ![Luau](https://img.shields.io/badge/Luau-Rojo-2C2D72) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Wires **Claude Code** directly into **Roblox Studio** with full Explorer access.
-Claude can read your place's hierarchy, inspect properties, read and edit scripts,
-create/delete/move instances, set properties, and run arbitrary Luau — all live in
-your open place.
+A companion to Roblox's built-in Studio MCP for **Claude Code**. It adds the two things
+the built-in server can't do:
+
+- **[Upload local files](#assets)**: images, audio, models and video from your computer
+  straight to Roblox, returning ready-to-use asset ids (with a de-duplicated upload log).
+- **[Export to Blender](#export-to-blender)**: any instance in Studio, written out as a
+  folder Blender rebuilds 1:1 (geometry, textures, hierarchy, camera).
+
+Use Roblox's built-in `Roblox_Studio` MCP for reading, editing, playtesting and
+screenshots. The bridge is installed automatically by
+[Claude Brain Starter](https://github.com/Taneelkins/claude-brain-starter).
+
+> **Legacy:** the bridge started as a full Explorer link (hierarchy, properties, scripts,
+> playtests, run Luau). Those tools still work and are listed below, but Roblox's own MCP
+> now covers them.
 
 ## How it works
 
@@ -26,7 +37,7 @@ up, runs it against the DataModel, and posts the result back → Claude sees it.
   by Claude Code) and the HTTP bridge on `127.0.0.1:44755` (the plugin connects here).
 - **`plugin/`** — the Studio plugin, modular Luau, built with Rojo into a `.rbxm`.
 
-## Tools Claude gets
+## Tools
 
 | Tool | What it does |
 |------|--------------|
